@@ -1,0 +1,441 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alien Wars - Adventure</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #030510;
+    color: white;
+    font-family: Arial, sans-serif;
+    overflow: hidden;
+}
+
+canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    cursor: crosshair;
+}
+
+#hud {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    right: 20px;
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+    font-size: 18px;
+    text-shadow: 0 0 12px cyan;
+}
+
+.panel {
+    background: #07152dcc;
+    border: 1px solid #00eaff;
+    padding: 12px 20px;
+    border-radius: 12px;
+    box-shadow: 0 0 18px #00d9ff55;
+}
+
+#health {
+    color: #ff4c76;
+}
+
+#menu {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    background: radial-gradient(circle, #12234bdc, #02030aee);
+}
+
+.box {
+    padding: 40px;
+    max-width: 500px;
+}
+
+h1 {
+    font-size: clamp(36px, 7vw, 65px);
+    color: #00eaff;
+    text-shadow: 0 0 15px cyan, 0 0 40px blue;
+    margin-bottom: 15px;
+}
+
+p {
+    color: #c9d8ff;
+    line-height: 2;
+}
+
+button {
+    margin-top: 25px;
+    padding: 15px 40px;
+    background: linear-gradient(90deg, #00c8ff, #6b36ff);
+    border: none;
+    border-radius: 30px;
+    color: white;
+    font-size: 19px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 0 25px #00c8ff;
+}
+
+button:hover {
+    transform: scale(1.08);
+}
+
+.hidden {
+    display: none !important;
+}
+</style>
+</head>
+
+<body>
+
+<div id="hud">
+    <div class="panel">
+        <div>❤️ Health: <span id="health">100</span></div>
+        <div>⭐ Score: <span id="score">0</span></div>
+    </div>
+    <div class="panel">
+        🌌 LEVEL <span id="level">1</span>
+    </div>
+</div>
+
+<div id="menu">
+    <div class="box">
+        <h1>ALIEN WARS</h1>
+        <h2>THE LAST SURVIVOR</h2>
+        <p>
+            Explore a mysterious alien planet.<br>
+            Defend yourself against alien monsters.<br>
+            Survive and become the ultimate hero!
+        </p>
+        <button onclick="startGame()">START ADVENTURE 🚀</button>
+        <p style="margin-top:20px;font-size:13px">
+            WASD = Move | Mouse = Aim | Click = Shoot
+        </p>
+    </div>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let W, H;
+
+function resize() {
+    W = canvas.width = innerWidth * devicePixelRatio;
+    H = canvas.height = innerHeight * devicePixelRatio;
+    ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    W = innerWidth;
+    H = innerHeight;
+}
+
+window.addEventListener("resize", resize);
+resize();
+
+let player, enemies, bullets, particles, stars;
+let score = 0;
+let level = 1;
+let health = 100;
+let running = false;
+let keys = {};
+let mouse = {x: W/2, y:H/2};
+let firing = false;
+let spawnTimer = 0;
+
+function init() {
+    player = {x:W/2,y:H/2,r:17,speed:4};
+    enemies = [];
+    bullets = [];
+    particles = [];
+    stars = Array.from({length:150},()=>({
+        x:Math.random()*W,
+        y:Math.random()*H,
+        r:Math.random()*2,
+        a:Math.random()
+    }));
+    score = 0;
+    level = 1;
+    health = 100;
+    updateHUD();
+}
+
+function updateHUD() {
+    document.getElementById("health").textContent = health;
+    document.getElementById("score").textContent = score;
+    document.getElementById("level").textContent = level;
+}
+
+function startGame() {
+    init();
+    running = true;
+    document.getElementById("menu").classList.add("hidden");
+    requestAnimationFrame(loop);
+}
+
+window.addEventListener("keydown",e=>{
+    keys[e.key.toLowerCase()] = true;
+    if(e.code==="Space") firing=true;
+});
+
+window.addEventListener("keyup",e=>{
+    keys[e.key.toLowerCase()] = false;
+    if(e.code==="Space") firing=false;
+});
+
+canvas.addEventListener("mousemove",e=>{
+    mouse.x=e.clientX;
+    mouse.y=e.clientY;
+});
+
+canvas.addEventListener("mousedown",()=>firing=true);
+window.addEventListener("mouseup",()=>firing=false);
+
+function shoot() {
+    const angle=Math.atan2(mouse.y-player.y,mouse.x-player.x);
+    bullets.push({
+        x:player.x,
+        y:player.y,
+        vx:Math.cos(angle)*11,
+        vy:Math.sin(angle)*11,
+        life:65
+    });
+}
+
+function spawnEnemy() {
+    let side=Math.floor(Math.random()*4);
+    let x=side===0?0:side===1?W:Math.random()*W;
+    let y=side===2?0:side===3?H:Math.random()*H;
+
+    enemies.push({
+        x,y,
+        r:15+Math.random()*8,
+        speed:0.8+level*0.12,
+        hp:1,
+        phase:Math.random()*6
+    });
+}
+
+function explosion(x,y,color) {
+    for(let i=0;i<14;i++){
+        let a=Math.random()*Math.PI*2;
+        let s=Math.random()*5+1;
+        particles.push({
+            x,y,
+            vx:Math.cos(a)*s,
+            vy:Math.sin(a)*s,
+            life:30,
+            color
+        });
+    }
+}
+
+function drawBackground() {
+    let g=ctx.createRadialGradient(
+        W/2,H/2,20,W/2,H/2,W
+    );
+    g.addColorStop(0,"#12254b");
+    g.addColorStop(0.6,"#071126");
+    g.addColorStop(1,"#02040c");
+
+    ctx.fillStyle=g;
+    ctx.fillRect(0,0,W,H);
+
+    stars.forEach(s=>{
+        ctx.fillStyle=`rgba(120,220,255,${s.a})`;
+        ctx.beginPath();
+        ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+        ctx.fill();
+    });
+
+    // Alien planet glow
+    let planet=ctx.createRadialGradient(
+        W*.8,H*.75,20,W*.8,H*.75,200
+    );
+    planet.addColorStop(0,"#5631a5");
+    planet.addColorStop(0.7,"#192b77");
+    planet.addColorStop(1,"transparent");
+
+    ctx.fillStyle=planet;
+    ctx.beginPath();
+    ctx.arc(W*.8,H*.75,200,0,Math.PI*2);
+    ctx.fill();
+}
+
+function drawPlayer() {
+    let angle=Math.atan2(mouse.y-player.y,mouse.x-player.x);
+
+    ctx.save();
+    ctx.translate(player.x,player.y);
+    ctx.rotate(angle);
+
+    ctx.shadowBlur=25;
+    ctx.shadowColor="#00eaff";
+
+    ctx.fillStyle="#00eaff";
+    ctx.beginPath();
+    ctx.moveTo(23,0);
+    ctx.lineTo(-15,-13);
+    ctx.lineTo(-9,0);
+    ctx.lineTo(-15,13);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle="white";
+    ctx.beginPath();
+    ctx.arc(2,0,5,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawEnemies() {
+    enemies.forEach(e=>{
+        ctx.save();
+        ctx.translate(e.x,e.y);
+
+        ctx.shadowBlur=25;
+        ctx.shadowColor="#a500ff";
+
+        ctx.fillStyle="#9d36dc";
+        ctx.beginPath();
+        ctx.arc(0,0,e.r,0,Math.PI*2);
+        ctx.fill();
+
+        ctx.fillStyle="#ff426e";
+        ctx.beginPath();
+        ctx.arc(-6,-3,3,0,Math.PI*2);
+        ctx.arc(6,-3,3,0,Math.PI*2);
+        ctx.fill();
+
+        ctx.restore();
+    });
+}
+
+function drawBullets() {
+    bullets.forEach(b=>{
+        ctx.shadowBlur=20;
+        ctx.shadowColor="#00ffff";
+        ctx.fillStyle="#8fffff";
+        ctx.beginPath();
+        ctx.arc(b.x,b.y,5,0,Math.PI*2);
+        ctx.fill();
+    });
+    ctx.shadowBlur=0;
+}
+
+function drawParticles() {
+    particles.forEach(p=>{
+        ctx.globalAlpha=Math.max(0,p.life/30);
+        ctx.fillStyle=p.color;
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,3,0,Math.PI*2);
+        ctx.fill();
+    });
+    ctx.globalAlpha=1;
+}
+
+let lastShot=0;
+
+function update() {
+    if(keys.w||keys.arrowup) player.y-=player.speed;
+    if(keys.s||keys.arrowdown) player.y+=player.speed;
+    if(keys.a||keys.arrowleft) player.x-=player.speed;
+    if(keys.d||keys.arrowright) player.x+=player.speed;
+
+    player.x=Math.max(20,Math.min(W-20,player.x));
+    player.y=Math.max(20,Math.min(H-20,player.y));
+
+    if(firing && Date.now()-lastShot>180){
+        shoot();
+        lastShot=Date.now();
+    }
+
+    spawnTimer++;
+    if(spawnTimer>Math.max(20,75-level*4)){
+        spawnEnemy();
+        spawnTimer=0;
+    }
+
+    bullets.forEach(b=>{
+        b.x+=b.vx;
+        b.y+=b.vy;
+        b.life--;
+    });
+
+    bullets=bullets.filter(b=>
+        b.life>0&&b.x>-20&&b.x<W+20&&b.y>-20&&b.y<H+20
+    );
+
+    enemies.forEach(e=>{
+        let angle=Math.atan2(player.y-e.y,player.x-e.x);
+        e.x+=Math.cos(angle)*e.speed;
+        e.y+=Math.sin(angle)*e.speed;
+
+        if(Math.hypot(player.x-e.x,player.y-e.y)<player.r+e.r){
+            health-=0.25;
+            if(health<=0) endGame();
+        }
+
+        bullets.forEach(b=>{
+            if(Math.hypot(b.x-e.x,b.y-e.y)<e.r+5 && e.hp>0){
+                e.hp=0;
+                b.life=0;
+                score+=10;
+                explosion(e.x,e.y,"#c35cff");
+            }
+        });
+    });
+
+    enemies=enemies.filter(e=>e.hp>0);
+
+    particles.forEach(p=>{
+        p.x+=p.vx;
+        p.y+=p.vy;
+        p.life--;
+    });
+    particles=particles.filter(p=>p.life>0);
+
+    level=1+Math.floor(score/150);
+    updateHUD();
+}
+
+function loop() {
+    if(!running)return;
+
+    drawBackground();
+    update();
+    drawBullets();
+    drawEnemies();
+    drawParticles();
+    drawPlayer();
+
+    requestAnimationFrame(loop);
+}
+
+function endGame() {
+    running=false;
+    document.getElementById("menu").classList.remove("hidden");
+    document.querySelector("#menu h1").textContent="GAME OVER";
+    document.querySelector("#menu h2").textContent="YOUR SCORE: "+score;
+    document.querySelector("#menu button").textContent="PLAY AGAIN 🚀";
+}
+</script>
+
+</body>
+</html>
